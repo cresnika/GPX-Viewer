@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPX Trail Viewer</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+  :root{
+    --bg-sidebar: #1b2420;
+    --bg-sidebar-raised: #222f29;
+    --bg-row-hover: #263229;
+    --text: #e8e6df;
+    --text-dim: #93a294;
+    --text-faint: #5f6f62;
+    --accent: #c98a3e;
+    --accent-soft: rgba(201,138,62,.16);
+    --border: #32433a;
+    --font-display: 'Barlow Condensed', sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font-body);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ---------- Sidebar ---------- */
+  #sidebar {
+    width: 340px;
+    min-width: 340px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 10;
+  }
+
+  #sidebar-header {
+    padding: 22px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #sidebar-header .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 4px;
+  }
+
+  #sidebar-header h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 26px;
+    letter-spacing: 0.01em;
+    margin: 0;
+    line-height: 1.1;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .btn {
+    flex: 1;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-sidebar-raised);
+    color: var(--text);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .btn:hover { background: #2a3830; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #1b2420; }
+  .btn.primary:hover { background: #dd9a4c; }
+
+  .util-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .util-row button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 2px 0;
+  }
+  .util-row button:hover { color: var(--accent); }
+
+  #summary {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-sidebar-raised);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .summary-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .summary-value {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .gap-row { margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--border); align-items: center; }
+  .gap-input-wrap { display: flex; align-items: center; gap: 4px; }
+  #gap-threshold {
+    width: 60px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  #gap-threshold:focus { outline: none; border-color: var(--accent); }
+  .gap-unit { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
+
+  #tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0 20px;
+  }
+
+  #tree::-webkit-scrollbar { width: 8px; }
+  #tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .empty-state {
+    margin: 40px 24px;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .empty-state svg { opacity: .5; margin-bottom: 10px; }
+
+  .group {
+    margin: 4px 10px 10px;
+  }
+
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .group-header:hover { background: var(--bg-row-hover); }
+
+  .group-header .twist {
+    font-size: 10px;
+    color: var(--text-faint);
+    width: 10px;
+    transition: transform .15s;
+    flex-shrink: 0;
+  }
+  .group-header.collapsed .twist { transform: rotate(-90deg); }
+
+  .group-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .group-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+
+  .file-list {
+    margin-left: 19px;
+    border-left: 1px solid var(--border);
+    padding-left: 10px;
+  }
+  .file-list.collapsed { display: none; }
+
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px;
+    border-radius: 5px;
+  }
+  .file-row:hover { background: var(--bg-row-hover); }
+
+  .swatch-wrap {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    cursor: pointer;
+    display: block;
+  }
+
+  .swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.25);
+    display: block;
+    box-sizing: border-box;
+    transition: transform .1s;
+  }
+  .swatch-wrap:hover .swatch { transform: scale(1.15); }
+
+  .swatch-input {
+    position: absolute;
+    top: 0; left: 0;
+    width: 14px;
+    height: 14px;
+    opacity: 0;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+
+  .file-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .file-name {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  #sidebar-footer {
+    padding: 10px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+  }
+
+  /* ---------- Map ---------- */
+  #map {
+    flex: 1;
+    height: 100%;
+    background: #dfe6df;
+  }
+
+  #dropzone-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(27,36,32,.82);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  #dropzone-overlay.active { display: flex; }
+  #dropzone-overlay .msg {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: 600;
+    color: var(--accent);
+    border: 2px dashed var(--accent);
+    padding: 40px 60px;
+    border-radius: 12px;
+  }
+
+  .leaflet-popup-content { font-family: var(--font-body); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <p class="eyebrow">Alex's</p>
+      <h1>GPX Viewer</h1>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-open-files">+ Dateien</button>
+      <button class="btn" id="btn-open-folder">+ Ordner</button>
+    </div>
+
+    <div class="util-row">
+      <span id="track-total" style="color:var(--text-dim)">0 Tracks geladen</span>
+      <button id="btn-clear">Alle entfernen</button>
+    </div>
+
+    <div id="summary">
+      <div class="summary-row">
+        <span class="summary-label">Eingeblendet</span>
+        <span class="summary-value" id="summary-count">0 Tracks</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Distanz</span>
+        <span class="summary-value" id="summary-distance">0,0 km</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Dauer</span>
+        <span class="summary-value" id="summary-duration">–</span>
+      </div>
+      <div class="summary-row gap-row">
+        <label class="summary-label" for="gap-threshold">Lücke ab</label>
+        <span class="gap-input-wrap">
+          <input type="number" id="gap-threshold" value="150" min="10" max="5000" step="10">
+          <span class="gap-unit">m</span>
+        </span>
+      </div>
+    </div>
+
+    <div id="tree">
+      <div class="empty-state" id="empty-state">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        <div>Noch keine Tracks geladen.<br>Dateien/Ordner öffnen oder<br>GPX-Dateien hierher ziehen.</div>
+      </div>
+    </div>
+
+    <div id="sidebar-footer">Kartendaten © OpenStreetMap Mitwirkende</div>
+  </aside>
+
+  <main id="map"></main>
+</div>
+
+<div id="dropzone-overlay"><div class="msg">GPX-Dateien hier ablegen</div></div>
+
+<input type="file" id="input-files" accept=".gpx" multiple style="display:none">
+<input type="file" id="input-folder" webkitdirectory directory multiple style="display:none">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-gpx@1.7.0/gpx.js"></script>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Map setup ----------
+  const map = L.map('map', { zoomControl: true }).setView([47.2, 9.6], 9);
+
+  const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap Mitwirkende'
+  });
+  const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap Mitwirkende &copy; CARTO'
+  });
+  const openTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: '&copy; OpenStreetMap Mitwirkende, SRTM | Kartendarstellung: &copy; OpenTopoMap (CC-BY-SA)'
+  });
+
+  osmStandard.addTo(map);
+
+  L.control.layers({
+    'OpenStreetMap (Standard)': osmStandard,
+    'Hell / reduziert (Carto)': cartoLight,
+    'Topographisch (OpenTopoMap)': openTopo
+  }, null, { collapsed: true, position: 'topright' }).addTo(map);
+
+  // ---------- Color palette for tracks ----------
+  const PALETTE = ['#e8622c','#2f8f9d','#c9a227','#7d5ba6','#3f9142','#d64550','#4472ca','#9c6b30','#2fa39d','#b3467c'];
+  let colorCursor = 0;
+  function nextColor(){ const c = PALETTE[colorCursor % PALETTE.length]; colorCursor++; return c; }
+
+  // ---------- State ----------
+  // groups: Map<groupName, { files: Map<fileId, fileEntry>, collapsed: bool }>
+  // fileEntry: { id, name, color, layer, visible, distanceKm, groupEl, checkboxEl, rowEl }
+  const groups = new Map();
+  let fileCounter = 0;
+
+  const treeEl = document.getElementById('tree');
+  const emptyState = document.getElementById('empty-state');
+  const totalEl = document.getElementById('track-total');
+
+  function groupFor(name){
+    if (!groups.has(name)) groups.set(name, { files: new Map(), collapsed: false });
+    return groups.get(name);
+  }
+
+  function totalFileCount(){
+    let n = 0;
+    groups.forEach(g => n += g.files.size);
+    return n;
+  }
+
+  function formatDuration(ms){
+    const totalMin = Math.round(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h === 0) return m + ' min';
+    return h + ' Std ' + String(m).padStart(2,'0') + ' min';
+  }
+
+  function updateSummary(){
+    let count = 0, distSum = 0, durSum = 0, anyDist = false, anyDur = false;
+    groups.forEach(g => g.files.forEach(f => {
+      if (!f.visible) return;
+      count++;
+      if (f.distanceKm && !isNaN(parseFloat(f.distanceKm))) { distSum += parseFloat(f.distanceKm); anyDist = true; }
+      if (f.durationMs) { durSum += f.durationMs; anyDur = true; }
+    }));
+    document.getElementById('summary-count').textContent = count + (count === 1 ? ' Track' : ' Tracks');
+    document.getElementById('summary-distance').textContent = anyDist ? distSum.toFixed(1).replace('.', ',') + ' km' : '–';
+    document.getElementById('summary-duration').textContent = anyDur ? formatDuration(durSum) : '–';
+  }
+
+  function updateTotal(){
+    const n = totalFileCount();
+    totalEl.textContent = n + (n === 1 ? ' Track geladen' : ' Tracks geladen');
+    emptyState.style.display = n === 0 ? 'block' : 'none';
+  }
+
+  // ---------- Loading a GPX File object ----------
+  function loadGPXFile(file, groupName){
+    const id = 'f' + (fileCounter++);
+    const color = nextColor();
+    const g = groupFor(groupName);
+
+    const entry = { id, name: file.name, color, layer: null, visible: true, distanceKm: null, durationMs: null, originalSegments: [], customLayers: [] };
+    g.files.set(id, entry);
+    renderTree();
+
+    const url = URL.createObjectURL(file);
+    const gpxLayer = new L.GPX(url, {
+      async: true,
+      polyline_options: { color: color, weight: 4, opacity: 0.85, lineJoin: 'round' },
+      marker_options: {
+        startIconUrl: null,
+        endIconUrl: null,
+        shadowUrl: null,
+        wptIconUrls: {}
+      }
+    });
+
+    gpxLayer.on('loaded', function(e){
+      entry.distanceKm = (e.target.get_distance() / 1000).toFixed(1);
+      const totalTime = e.target.get_total_time ? e.target.get_total_time() : 0;
+      entry.durationMs = (totalTime && totalTime > 0) ? totalTime : null;
+
+      // Capture original track geometry, then remove the plain polylines --
+      // we replace them with our own solid/dashed segments below.
+      const originalPolylines = [];
+      e.target.eachLayer(l => { if (l instanceof L.Polyline) originalPolylines.push(l); });
+      originalPolylines.forEach(l => {
+        entry.originalSegments.push(l.getLatLngs());
+        e.target.removeLayer(l);
+      });
+
+      renderTrackSegments(entry);
+      updateFileMeta(entry);
+      updateSummary();
+      URL.revokeObjectURL(url);
+    });
+
+    gpxLayer.on('error', function(){
+      entry.distanceKm = 'Fehler';
+      updateFileMeta(entry);
+    });
+
+    gpxLayer.addTo(map);
+    entry.layer = gpxLayer;
+  }
+
+  function updateFileMeta(entry){
+    if (!entry.rowEl) return;
+    const metaEl = entry.rowEl.querySelector('.file-meta');
+    if (metaEl) metaEl.textContent = entry.distanceKm ? entry.distanceKm + ' km' : '…';
+  }
+
+  // ---------- Tree rendering ----------
+  function renderTree(){
+    treeEl.querySelectorAll('.group').forEach(el => el.remove());
+
+    groups.forEach((g, groupName) => {
+      if (g.files.size === 0) return;
+
+      const groupEl = document.createElement('div');
+      groupEl.className = 'group';
+
+      const header = document.createElement('div');
+      header.className = 'group-header' + (g.collapsed ? ' collapsed' : '');
+
+      const twist = document.createElement('span');
+      twist.className = 'twist';
+      twist.textContent = '▾';
+      header.appendChild(twist);
+
+      const groupCb = document.createElement('input');
+      groupCb.type = 'checkbox';
+      const allVisible = [...g.files.values()].every(f => f.visible);
+      const noneVisible = [...g.files.values()].every(f => !f.visible);
+      groupCb.checked = allVisible;
+      groupCb.indeterminate = !allVisible && !noneVisible;
+      groupCb.addEventListener('click', (ev) => ev.stopPropagation());
+      groupCb.addEventListener('change', () => {
+        g.files.forEach(f => setFileVisible(f, groupCb.checked));
+        renderTree();
+      });
+      header.appendChild(groupCb);
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'group-name';
+      nameEl.textContent = groupName;
+      header.appendChild(nameEl);
+
+      const countEl = document.createElement('span');
+      countEl.className = 'group-count';
+      countEl.textContent = g.files.size;
+      header.appendChild(countEl);
+
+      header.addEventListener('click', () => {
+        g.collapsed = !g.collapsed;
+        renderTree();
+      });
+
+      groupEl.appendChild(header);
+
+      const fileList = document.createElement('div');
+      fileList.className = 'file-list' + (g.collapsed ? ' collapsed' : '');
+
+      g.files.forEach(entry => {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = entry.visible;
+        cb.addEventListener('change', () => {
+          setFileVisible(entry, cb.checked);
+          renderTree();
+        });
+        row.appendChild(cb);
+
+        const swWrap = document.createElement('label');
+        swWrap.className = 'swatch-wrap';
+        swWrap.title = 'Farbe ändern';
+
+        const sw = document.createElement('span');
+        sw.className = 'swatch';
+        sw.style.background = entry.color;
+        swWrap.appendChild(sw);
+
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.className = 'swatch-input';
+        colorInput.value = entry.color;
+        colorInput.addEventListener('input', () => {
+          entry.color = colorInput.value;
+          sw.style.background = entry.color;
+          setTrackColor(entry, entry.color);
+        });
+        colorInput.addEventListener('click', (ev) => ev.stopPropagation());
+        swWrap.appendChild(colorInput);
+
+        row.appendChild(swWrap);
+
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const nm = document.createElement('div');
+        nm.className = 'file-name';
+        nm.textContent = entry.name;
+        nm.title = entry.name;
+        const meta = document.createElement('div');
+        meta.className = 'file-meta';
+        meta.textContent = entry.distanceKm ? entry.distanceKm + ' km' : '…';
+        info.appendChild(nm);
+        info.appendChild(meta);
+        row.appendChild(info);
+
+        entry.rowEl = row;
+        fileList.appendChild(row);
+      });
+
+      groupEl.appendChild(fileList);
+      treeEl.appendChild(groupEl);
+    });
+
+    updateTotal();
+    updateSummary();
+  }
+
+  let gapThreshold = 150; // meters -- points further apart than this are drawn dashed
+
+  function splitIntoSegments(latlngs, thresholdMeters){
+    const result = [];
+    if (latlngs.length < 2) return result;
+    let current = [latlngs[0]];
+    for (let i = 1; i < latlngs.length; i++){
+      const d = latlngs[i-1].distanceTo(latlngs[i]);
+      if (d > thresholdMeters){
+        if (current.length >= 2) result.push({ latlngs: current, dashed: false });
+        result.push({ latlngs: [latlngs[i-1], latlngs[i]], dashed: true });
+        current = [latlngs[i]];
+      } else {
+        current.push(latlngs[i]);
+      }
+    }
+    if (current.length >= 2) result.push({ latlngs: current, dashed: false });
+    return result;
+  }
+
+  function renderTrackSegments(entry){
+    entry.customLayers.forEach(l => entry.layer.removeLayer(l));
+    entry.customLayers = [];
+
+    entry.originalSegments.forEach(latlngs => {
+      const segments = splitIntoSegments(latlngs, gapThreshold);
+      segments.forEach(seg => {
+        const pl = L.polyline(seg.latlngs, {
+          color: entry.color,
+          weight: seg.dashed ? 3 : 4,
+          opacity: seg.dashed ? 0.55 : 0.85,
+          dashArray: seg.dashed ? '8 6' : null,
+          lineJoin: 'round'
+        });
+        pl.addTo(entry.layer);
+        entry.customLayers.push(pl);
+      });
+    });
+  }
+
+  const gapInput = document.getElementById('gap-threshold');
+  gapInput.addEventListener('change', () => {
+    const val = parseInt(gapInput.value, 10);
+    gapThreshold = (isNaN(val) || val < 10) ? 150 : val;
+    groups.forEach(g => g.files.forEach(entry => {
+      if (entry.originalSegments.length) renderTrackSegments(entry);
+    }));
+  });
+
+  function setTrackColor(entry, color){
+    if (!entry.layer) return;
+    entry.customLayers.forEach(l => l.setStyle({ color: color }));
+  }
+
+  function setFileVisible(entry, visible){
+    entry.visible = visible;
+    if (!entry.layer) return;
+    if (visible) { if (!map.hasLayer(entry.layer)) entry.layer.addTo(map); }
+    else { if (map.hasLayer(entry.layer)) map.removeLayer(entry.layer); }
+  }
+
+  // ---------- Zoom to all visible tracks ----------
+  function zoomToAll(){
+    const fg = L.featureGroup();
+    let any = false;
+    groups.forEach(g => g.files.forEach(f => {
+      if (f.visible && f.layer) { fg.addLayer(f.layer); any = true; }
+    }));
+    if (any) map.fitBounds(fg.getBounds(), { padding: [30,30] });
+  }
+
+  // ---------- Clear all ----------
+  function clearAll(){
+    groups.forEach(g => g.files.forEach(f => { if (f.layer) map.removeLayer(f.layer); }));
+    groups.clear();
+    renderTree();
+  }
+
+  document.getElementById('btn-clear').addEventListener('click', clearAll);
+
+  // ---------- File input handling ----------
+  function handleFileInputList(fileList, useRelativePath){
+    const gpxFiles = [...fileList].filter(f => /\.gpx$/i.test(f.name));
+    let addedAny = false;
+    gpxFiles.forEach(file => {
+      let groupName = 'Einzelne Dateien';
+      if (useRelativePath && file.webkitRelativePath) {
+        const parts = file.webkitRelativePath.split('/');
+        if (parts.length > 1) groupName = parts[0];
+      }
+      loadGPXFile(file, groupName);
+      addedAny = true;
+    });
+    if (addedAny) setTimeout(zoomToAll, 400);
+  }
+
+  const inputFiles = document.getElementById('input-files');
+  const inputFolder = document.getElementById('input-folder');
+
+  document.getElementById('btn-open-files').addEventListener('click', () => inputFiles.click());
+  document.getElementById('btn-open-folder').addEventListener('click', () => inputFolder.click());
+
+  inputFiles.addEventListener('change', (e) => {
+    handleFileInputList(e.target.files, false);
+    inputFiles.value = '';
+  });
+  inputFolder.addEventListener('change', (e) => {
+    handleFileInputList(e.target.files, true);
+    inputFolder.value = '';
+  });
+
+  // ---------- Drag & drop (files and folders) ----------
+  const overlay = document.getElementById('dropzone-overlay');
+  let dragCounter = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    overlay.classList.add('active');
+  });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragleave', (e) => {
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; overlay.classList.remove('active'); }
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.remove('active');
+
+    const items = e.dataTransfer.items;
+    if (!items) return;
+
+    const collected = []; // { file, groupName }
+    const entryPromises = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry) {
+        entryPromises.push(walkEntry(entry, entry.name, collected));
+      } else {
+        const file = item.getAsFile();
+        if (file && /\.gpx$/i.test(file.name)) collected.push({ file, groupName: 'Einzelne Dateien' });
+      }
+    }
+
+    await Promise.all(entryPromises);
+
+    if (collected.length === 0) return;
+    collected.forEach(({file, groupName}) => loadGPXFile(file, groupName));
+    setTimeout(zoomToAll, 400);
+  });
+
+  function walkEntry(entry, topName, collected){
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(file => {
+          if (/\.gpx$/i.test(file.name)) {
+            collected.push({ file, groupName: 'Einzelne Dateien' });
+          }
+          resolve();
+        }, resolve);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const groupName = topName;
+        const readAll = () => {
+          reader.readEntries(async (entries) => {
+            if (entries.length === 0) { resolve(); return; }
+            const promises = entries.map(child => {
+              if (child.isFile) {
+                return new Promise(res => {
+                  child.file(file => {
+                    if (/\.gpx$/i.test(file.name)) collected.push({ file, groupName });
+                    res();
+                  }, res);
+                });
+              } else {
+                return walkEntry(child, groupName, collected);
+              }
+            });
+            await Promise.all(promises);
+            readAll(); // directories can return entries in batches
+          }, resolve);
+        };
+        readAll();
+      } else {
+        resolve();
+      }
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
