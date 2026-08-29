@@ -121,11 +121,16 @@
     #sidebar.open { transform: translateX(0); }
 
     #map { width: 100%; }
+
+    /* Move Leaflet's own zoom control out from under the hamburger button */
+    .leaflet-top.leaflet-left { margin-top: 64px; }
   }
+
+  #hamburger-btn.hidden { display: none !important; }
 
   #sidebar-header .eyebrow {
     font-family: var(--font-mono);
-    font-size: 16px;
+    font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--accent);
@@ -408,7 +413,7 @@
   <aside id="sidebar">
     <div id="sidebar-header">
       <button id="sidebar-close-btn" aria-label="Menü schließen">✕</button>
-      <p class="eyebrow">Alex'a</p>
+      <p class="eyebrow" style="font-size:16px;">Alex's</p>
       <h1>GPX Viewer</h1>
     </div>
 
@@ -478,10 +483,12 @@
   function openSidebar(){
     sidebarEl.classList.add('open');
     backdropEl.classList.add('active');
+    hamburgerBtn.classList.add('hidden');
   }
   function closeSidebar(){
     sidebarEl.classList.remove('open');
     backdropEl.classList.remove('active');
+    hamburgerBtn.classList.remove('hidden');
   }
   hamburgerBtn.addEventListener('click', openSidebar);
   sidebarCloseBtn.addEventListener('click', closeSidebar);
