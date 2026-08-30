@@ -43,13 +43,30 @@
   /* ---------- Sidebar ---------- */
   #sidebar {
     width: 340px;
-    min-width: 340px;
+    min-width: 260px;
+    max-width: 640px;
+    flex-shrink: 0;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     position: relative;
     z-index: 10;
+  }
+
+  #sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: -4px;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 30;
+    background: transparent;
+  }
+  #sidebar-resizer:hover,
+  #sidebar-resizer.dragging {
+    background: var(--accent-soft);
   }
 
   #sidebar-header {
@@ -119,6 +136,8 @@
       box-shadow: 4px 0 28px rgba(0,0,0,.45);
     }
     #sidebar.open { transform: translateX(0); }
+
+    #sidebar-resizer { display: none; }
 
     #map { width: 100%; }
 
@@ -492,7 +511,7 @@
         <select id="route-profile">
           <option value="foot">Zu Fuß</option>
           <option value="bike">Fahrrad</option>
-          <option value="driving" selected>Auto</option>
+          <option value="driving" selected>Auto/Motorrad</option>
         </select>
         <button id="btn-close-gaps" class="btn small">Lücken schließen</button>
       </div>
@@ -506,6 +525,8 @@
     </div>
 
     <div id="sidebar-footer">Kartendaten © OpenStreetMap Mitwirkende</div>
+
+    <div id="sidebar-resizer" title="Breite ziehen"></div>
   </aside>
 
   <main id="map"></main>
@@ -542,6 +563,34 @@
   hamburgerBtn.addEventListener('click', openSidebar);
   sidebarCloseBtn.addEventListener('click', closeSidebar);
   backdropEl.addEventListener('click', closeSidebar);
+
+  // ---------- Sidebar width resizing (desktop, mouse drag) ----------
+  const sidebarResizer = document.getElementById('sidebar-resizer');
+  let isResizingSidebar = false;
+
+  sidebarResizer.addEventListener('mousedown', (e) => {
+    isResizingSidebar = true;
+    sidebarResizer.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isResizingSidebar) return;
+    const newWidth = Math.min(640, Math.max(260, e.clientX));
+    sidebarEl.style.width = newWidth + 'px';
+    if (map) map.invalidateSize();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isResizingSidebar) return;
+    isResizingSidebar = false;
+    sidebarResizer.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    if (map) map.invalidateSize();
+  });
 
   // ---------- Map setup ----------
   const map = L.map('map', { zoomControl: true }).setView([47.2, 9.6], 9);
@@ -689,6 +738,7 @@
 
   // ---------- Tree rendering ----------
   function renderTree(){
+    const scrollPos = treeEl.scrollTop;
     treeEl.querySelectorAll('.group').forEach(el => el.remove());
 
     groups.forEach((g, groupName) => {
@@ -817,9 +867,10 @@
 
     updateTotal();
     updateSummary();
+    treeEl.scrollTop = scrollPos;
   }
 
-  let gapThreshold = 5000; // meters -- points further apart than this are drawn dashed
+  let gapThreshold = 1000; // meters -- points further apart than this are drawn dashed
 
   function splitIntoSegments(latlngs, thresholdMeters){
     const result = [];
@@ -864,7 +915,7 @@
   const gapInput = document.getElementById('gap-threshold');
   gapInput.addEventListener('change', () => {
     const val = parseInt(gapInput.value, 10);
-    gapThreshold = (isNaN(val) || val < 10) ? 5000 : val;
+    gapThreshold = (isNaN(val) || val < 10) ? 1000 : val;
     groups.forEach(g => g.files.forEach(entry => {
       if (entry.originalSegments.length) renderTrackSegments(entry);
     }));
