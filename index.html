@@ -129,9 +129,8 @@
   #hamburger-btn.hidden { display: none !important; }
 
   #sidebar-header .eyebrow {
-/*    font-family: var(--font-mono); */
-	font-family: 'Trebuchet MS', sans-serif;
-    font-size: 20px;
+    font-family: var(--font-mono);
+    font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--accent);
@@ -332,6 +331,22 @@
     border-radius: 5px;
   }
   .file-row:hover { background: var(--bg-row-hover); }
+  .file-row:hover .row-icon-btn { opacity: 1; }
+
+  .row-icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    font-size: 15px;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    flex-shrink: 0;
+    transition: opacity .1s;
+  }
+  .row-icon-btn:hover { color: var(--accent); background: var(--bg-sidebar); opacity: 1; }
 
   .swatch-wrap {
     position: relative;
@@ -439,7 +454,7 @@
   <aside id="sidebar">
     <div id="sidebar-header">
       <button id="sidebar-close-btn" aria-label="Menü schließen">✕</button>
-      <p class="eyebrow">Alex's</p>
+      <p class="eyebrow" style="font-size:26px;font-family:var(--font-display);font-weight:700;text-transform:none;letter-spacing:0.01em;">Alex's</p>
       <h1>GPX Viewer</h1>
     </div>
 
@@ -469,15 +484,15 @@
       <div class="summary-row gap-row">
         <label class="summary-label" for="gap-threshold">Lücke ab</label>
         <span class="gap-input-wrap">
-          <input type="number" id="gap-threshold" value="5000" min="10" max="5000" step="10">
+          <input type="number" id="gap-threshold" value="1000" min="10" max="20000" step="10">
           <span class="gap-unit">m</span>
         </span>
       </div>
       <div class="route-row">
         <select id="route-profile">
-          <option value="driving" selected>Auto/Motorrad</option>
           <option value="foot">Zu Fuß</option>
           <option value="bike">Fahrrad</option>
+          <option value="driving" selected>Auto</option>
         </select>
         <button id="btn-close-gaps" class="btn small">Lücken schließen</button>
       </div>
@@ -611,7 +626,7 @@
     const color = nextColor();
     const g = groupFor(groupName);
 
-    const entry = { id, name: file.name, color, layer: null, visible: true, distanceKm: null, durationMs: null, originalSegments: [], customLayers: [] };
+    const entry = { id, name: file.name, color, layer: null, visible: true, distanceKm: null, durationMs: null, originalSegments: [], customLayers: [], groupName: groupName };
     g.files.set(id, entry);
     renderTree();
 
@@ -642,6 +657,7 @@
       });
 
       renderTrackSegments(entry);
+      recomputeDistance(entry);
       updateFileMeta(entry);
       updateSummary();
       URL.revokeObjectURL(url);
@@ -654,6 +670,15 @@
 
     gpxLayer.addTo(map);
     entry.layer = gpxLayer;
+  }
+
+  function recomputeDistance(entry){
+    let totalMeters = 0;
+    entry.customLayers.forEach(l => {
+      const latlngs = l.getLatLngs();
+      for (let i = 1; i < latlngs.length; i++) totalMeters += latlngs[i-1].distanceTo(latlngs[i]);
+    });
+    entry.distanceKm = (totalMeters / 1000).toFixed(1);
   }
 
   function updateFileMeta(entry){
@@ -764,6 +789,26 @@
 
         entry.rowEl = row;
         fileList.appendChild(row);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'row-icon-btn';
+        saveBtn.title = 'Als GPX-Datei speichern';
+        saveBtn.innerHTML = '&#8681;';
+        saveBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          exportEntryAsGPX(entry);
+        });
+        row.appendChild(saveBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'row-icon-btn';
+        delBtn.title = 'Track entfernen';
+        delBtn.innerHTML = '&times;';
+        delBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          deleteEntry(entry);
+        });
+        row.appendChild(delBtn);
       });
 
       groupEl.appendChild(fileList);
@@ -774,7 +819,7 @@
     updateSummary();
   }
 
-  let gapThreshold = 150; // meters -- points further apart than this are drawn dashed
+  let gapThreshold = 5000; // meters -- points further apart than this are drawn dashed
 
   function splitIntoSegments(latlngs, thresholdMeters){
     const result = [];
@@ -819,7 +864,7 @@
   const gapInput = document.getElementById('gap-threshold');
   gapInput.addEventListener('change', () => {
     const val = parseInt(gapInput.value, 10);
-    gapThreshold = (isNaN(val) || val < 10) ? 150 : val;
+    gapThreshold = (isNaN(val) || val < 10) ? 5000 : val;
     groups.forEach(g => g.files.forEach(entry => {
       if (entry.originalSegments.length) renderTrackSegments(entry);
     }));
@@ -858,6 +903,7 @@
     closeGapsBtn.disabled = true;
     let done = 0, failed = 0;
 
+    const touchedEntries = new Set();
     for (const { entry, layer } of gapLayers){
       done++;
       closeGapsBtn.textContent = `Route ${done}/${gapLayers.length} …`;
@@ -878,12 +924,16 @@
         routedLayer.addTo(entry.layer);
         const idx = entry.customLayers.indexOf(layer);
         if (idx !== -1) entry.customLayers[idx] = routedLayer;
+        touchedEntries.add(entry);
       } else {
         failed++;
       }
 
       if (done < gapLayers.length) await sleep(1100); // respect OSRM demo server rate limit
     }
+
+    touchedEntries.forEach(entry => { recomputeDistance(entry); updateFileMeta(entry); });
+    updateSummary();
 
     closeGapsBtn.disabled = false;
     closeGapsBtn.textContent = failed > 0 ? `${gapLayers.length - failed}/${gapLayers.length} geschlossen` : 'Lücken geschlossen';
@@ -893,6 +943,49 @@
   function setTrackColor(entry, color){
     if (!entry.layer) return;
     entry.customLayers.forEach(l => l.setStyle({ color: color }));
+  }
+
+  function escapeXml(str){
+    return str.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+  }
+
+  function exportEntryAsGPX(entry){
+    const points = [];
+    entry.customLayers.forEach(l => {
+      l.getLatLngs().forEach(ll => {
+        const last = points[points.length - 1];
+        if (last && Math.abs(last.lat - ll.lat) < 1e-9 && Math.abs(last.lng - ll.lng) < 1e-9) return;
+        points.push(ll);
+      });
+    });
+    if (points.length < 2){
+      alert('Keine Track-Daten zum Speichern vorhanden.');
+      return;
+    }
+
+    const trkpts = points.map(p => `      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lng.toFixed(6)}"></trkpt>`).join('\n');
+    const baseName = entry.name.replace(/\.gpx$/i, '');
+    const gpxXml = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Viewer" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk>\n    <name>${escapeXml(baseName)}</name>\n    <trkseg>\n${trkpts}\n    </trkseg>\n  </trk>\n</gpx>\n`;
+
+    const blob = new Blob([gpxXml], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = baseName + '_geschlossen.gpx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function deleteEntry(entry){
+    if (entry.layer && map.hasLayer(entry.layer)) map.removeLayer(entry.layer);
+    const g = groups.get(entry.groupName);
+    if (g){
+      g.files.delete(entry.id);
+      if (g.files.size === 0) groups.delete(entry.groupName);
+    }
+    renderTree();
   }
 
   function setFileVisible(entry, visible){
